@@ -1,152 +1,172 @@
-# Webchan
+# Webchan 1.0.6
 
-Webchan is an experimental proof-directed systems and numerical language for finite, structured computation. It targets single-host-thread WebAssembly and native integration while keeping bounded work, dependence, locality, topology, data layout, and external effects visible to the compiler.
+Build: `091020261435`
 
-> Do not execute, store, synchronize, or materialize work that can be proved unnecessary.
+Webchan is an experimental proof-directed systems and numerical language for finite, structured computation. Version 1.0.6 joins two previously separate concerns:
 
-Current validated build: **1.0.4** (`091020261219`)
+- structure-equivalent programs may share optimization permissions when the compiler can prove the same properties;
+- long browser work may execute through resumable, bounded, cancellable and backpressured paths instead of occupying the host until completion.
 
-- Source extension: `.webchan`
-- IR extension: `.webir`
-- Backend: internal C lowered through Clang/LLVM
-- Portable Wasm: scalar baseline plus optional standard SIMD128
-- 1.0.4 archive SHA-256: `57c97f8b7377f8b66ec0f61d527329b921e67b1dc0e4d34557cfc928d819bc1c`
+> Structure, not spelling, grants optimization. Bounded host occupation, not eventual completion, governs responsive web execution.
 
-## Compiler path
+The 1.0.5 Minimal Web Surface remains unchanged: ordinary source can stay short, while resolved contracts and proof information remain explicit in generated IR.
+
+## Download
+
+- [Webchan 1.0.6 archive](dist/webchan-1.0.6-091020261435.zip)
+- [SHA-256 checksum](dist/webchan-1.0.6-091020261435.zip.sha256)
+- Archive size: `986577` bytes
+- SHA-256: `641724ef23adba094e40be5bd049a8f142c4a38b4c663d8a3efdd6067ba91ab4`
+
+Published archives are indexed in [`dist/`](dist/).
+
+## Minimal source
 
 ```text
-.webchan
-   |
-   v
-semantic / termination / temporal checks
-   |
-   v
-structural proof + profitability analysis
-   |
-   v
-.webir
-   |
-   v
-internal generated C
-   |
-   v
-Clang / LLVM
-   |
-   v
-WebAssembly or native integration
+module demo
+
+array x f64 1000000
+array y f64 1000000
+
+kernel scale
+for i in 0..1000000
+y[i] = 2 * x[i]
+end
+end
+
+fn identity
+repeat 1 affine 1 0
+end
+entry identity
 ```
 
-Webchan owns source semantics, proof obligations, structural transformations, and execution contracts. LLVM handles low-level instruction selection, register allocation, vectorization, target scheduling, and final code generation.
+The compiler still accepts the older explicit contract and block-specific terminators.
 
-## Structural systems
+## What is new in 1.0.6
 
-### Structural Iteration Algebra
+### Structural Passport
 
-Finite induction domains, nested bounded loops, dependence, gather/scatter relations, reductions, scans, local predication, and legality checks for loop transformations.
+Ordinary indexed kernels are no longer confined to the generic-kernel proof domain when their arithmetic and index relations prove a stronger structure.
 
-### Structural Data Layout Algebra
+For example:
 
-Logical arrays are separated from physical storage. Separate, interleaved, tiled, or scalarized layouts are selected only when the rewrite is legal and profitable.
+```text
+for i in 0..256
+y[i] = 4 * x[i]
+end
+```
 
-### Structural Linear Algebra
+is proved as a diagonal linear operator and receives the same legal solver capability set as an equivalent explicitly declared diagonal matrix. A three-point stencil can likewise be promoted to a banded linear operator. Nonlinear forms such as `x[i] * x[i] + 1` do not receive a linear passport.
 
-The compiler can reason about diagonal, triangular, banded, sparse, symmetric, diagonally dominant, and SPD structure. Matrix-free operator actions are retained when materializing a global matrix would add storage and traffic without adding required information.
+The passport uses a separate proof namespace from generic kernel facts. Workload names, browser names and benchmark identities are not optimization predicates.
 
-### Structural Topology
+### Cross-domain topology evidence
 
-Finite graph analysis includes connected components, bridges, articulation vertices, Euler characteristic, first Betti number, graph homotopy rank, and topology-aware planning. Selected finite 2-complex operations use GF(2) boundary ranks and elementary collapse certificates.
+Finite graph Laplacians now export a typed linear passport. For the supported undirected graph representation the compiler can prove linearity, symmetry, static sparsity, matrix-free action and positive semidefiniteness, while reusing the topology component proof for Laplacian nullity.
 
-### Inverse Parallel Expansion
+An ungrounded graph Laplacian is **not** silently promoted to SPD and receives no solver unlock merely because it is symmetric. Its zero-space remains explicit.
 
-Finite fork-join dependence can be imported as evidence. If purity, acyclicity, and dependence constraints are proved, orchestration that is not part of program meaning can be removed without violating causality.
+### Resumable kernels
 
-### External Capability Interface
+The original `wc_kernel_run()` fast path remains available. Compiler-proved suitable kernels additionally expose a resumable companion ABI:
 
-External work is described by capability rather than vendor identity. The default policy is authority-first, C ABI when eligible, replaceable providers, and vendor-specific fallback only when needed.
+```text
+reset -> resume(budget) -> yield -> resume(...) -> done
+```
+
+Continuation state records progress rather than restarting the kernel. The browser host uses returned slices plus observed wall-clock time to adapt the next work-unit budget. This is cooperative safepoint scheduling, not preemptive interruption in the middle of an indivisible operation.
+
+### Async ECI lifecycle
+
+The External Capability Interface now has a real asynchronous lifecycle:
+
+```text
+async_start -> pending Future -> host completion/failure -> Future terminal state
+                         \-> cancel -> provider AbortController
+```
+
+Source-level `eci_async` and `eci_cancel` lower into the same generic ABI. Generation tokens prevent a late completion from overwriting a cancelled or recycled Future.
+
+### Bounded streams and backpressure
+
+The runtime includes fixed-capacity byte streams with read/write cursors, high/low watermarks, close/fail/cancel states and host-visible contiguous spans. Producers pause when the high-water mark is reached and resume after consumers drain below the low-water mark.
+
+This primitive is application-neutral. It can carry HTTP response bodies, WebSocket/SSE payloads, files or generated data without an unbounded queue.
+
+### Incremental text/framing
+
+The browser host includes incremental UTF-8 decoding, line framing and SSE framing. Decoder/parser state survives arbitrary chunk boundaries, including a UTF-8 code point split across network chunks.
+
+### Event mailbox and active-set bound
+
+Host events enter a bounded FIFO mailbox. The mailbox capacity is tied to the active-set contract rather than growing without limit. Overflow is explicit and counted.
+
+### Coalesced DOM commit
+
+DOM text, attribute and property writes are queued and coalesced by target/property key, then committed at a frame boundary. Repeated writes to the same observable location within one batch collapse to the final write.
+
+### Deferred repair
+
+Repeated invalidations are accumulated in a dirty set without immediately destroying completed state. Repair commit invalidates each affected task once and then recomputes through the existing causal scheduler. Repeated invalidations of the same cone therefore coalesce.
+
+### Optional Worker host
+
+`host/browser_worker_host.mjs` is an optional off-main-thread profile for sustained computation. It is an additional throughput placement, not a fallback for a blocking main-thread design. The main-thread browser runtime is still required to be resumable and bounded.
 
 ## Optimization policy
 
-Webchan separates optimization into two classes.
+Webchan retains the same two optimization classes.
 
-**Housekeeping Optimization** covers classical compiler machinery: dead-code elimination, common-subexpression elimination, conventional loop optimization, induction-variable simplification, ordinary auto-vectorization, SIMD lowering, locality costing, target-feature selection, and similar established techniques.
+**Housekeeping Optimization** contains classical compiler infrastructure such as constant propagation, DCE, CSE, LICM, induction-variable simplification, standard SIMD lowering, locality costing and normal inlining/outlining profitability.
 
-**Luxury Optimization** is reserved for mechanisms originating in Webchan's own design. Current examples include temporal safety, causal ready-frontier execution, active working sets, structural work deletion, matrix-free substitution, Inverse Parallel Expansion, and related structural systems.
+**Luxury Optimization** remains the Webchan-origin set: temporal safety, causal ready-frontier/rank execution, active working sets, proof-directed structural work deletion, matrix-free storage-to-compute substitution, IPE, progressive completion/deferred repair, and structural-algebra unification.
 
-Distinctive advanced optimizers from other languages or research systems are not imported as Luxury Optimization.
+1.0.6 does not add a ninth Luxury Optimization. It expands where existing structural permissions can legally flow.
 
-Benchmarks are probes, not optimizer specifications. A benchmark may expose a missing general rule, but workload names and competitor identities are not valid optimization predicates. Probe-driven changes require an origin case, a cross-domain witness, and a negative witness.
+**Benchmarks are probes, never teachers.** A probe may expose a missing generic structure; workload, provider, browser, product or competitor identity may not enter an optimizer predicate.
 
-## 1.0.4
+## Browser runtime boundary
 
-1.0.4 adds no new Luxury Optimization. It closes a scalar-loop lowering gap with Housekeeping Optimization only:
+1.0.6 makes the non-blocking primitives real, but it is not an ecosystem-complete browser framework. The release provides the generic runtime, async ECI, streaming/backpressure, DOM mutation batching, event ingress and optional Worker host. It does not claim React/Vue/Svelte-equivalent component ecosystems, a complete npm replacement, or automatic proof recovery from arbitrary opaque runtime data.
 
-- proved induction-variable simplification for direct `u32` affine relations;
-- exact modulo-`u32` sentinel induction for fixed unit-stride finite loops, including wrap across `0xffffffff -> 0`;
-- exact fallback when the proof does not hold;
-- profitability-gated selective kernel outlining instead of blanket `noinline`;
-- regression witnesses for affine, non-affine, mutating-base, runtime-bound, tiny, and oversized cases.
+A structure can only receive a passport when the AOT compiler has sufficient evidence. Runtime-generated adjacency arrays, pointer-obscured aliasing or unknown external effects are not guessed into stronger mathematical domains.
 
-The 1.0.4 release regression suite completed with **214 PASS / 0 FAIL**, **30/30 negative gates**, and **30/30 scalar-loop housekeeping probes**. The scalar no-SIMD probe was checked to contain zero Wasm SIMD instructions.
+## Build and test
 
-## Build
-
-From an extracted release tree:
-
-```bash
+```sh
 ./build_and_test.sh
 ```
 
-Compiler only:
+The release build covers the inherited compiler/runtime regressions plus 1.0.6 gates for:
 
-```bash
-cc -O2 -std=c11 compiler/webchanc.c -lm -o build/webchanc
-```
+- minimal/explicit surface equivalence;
+- ordinary-kernel structural passports and nonlinear rejection;
+- fast/resumable exact output parity;
+- topology-to-linear typed proof transfer without false SPD permission;
+- bounded streams and backpressure;
+- async Future completion, cancellation and stale-completion rejection;
+- incremental UTF-8 and SSE framing;
+- active-set-bounded event mailbox;
+- deferred repair coalescing;
+- Chromium responsive-kernel and DOM batching behavior;
+- optional Chromium Worker execution;
+- scalar/SIMD128 parity and the inherited 1.0.4 housekeeping probes;
+- compiler specialization/provenance policy.
 
-Compile a source file:
+Final 1.0.6 release validation: **234 PASS / 0 FAIL**, **30/30 compiler negative gates**, and **312/312 packaged-file SHA-256 checks**.
 
-```bash
-./build/webchanc input.webchan output_dir
-```
+## Performance preservation
 
-For portable Wasm, the release can build a conservative scalar module and a standard SIMD128 variant from the same generated source. Host selection is capability-based; unsupported SIMD128 falls back to scalar.
+The old synchronous fast kernel remains a separate path rather than being routed through the resumable host loop. A direct Chromium A/B used the same 1.0.5 `profile_parity.webchan` source, forced scalar Wasm on both versions, and alternated the two modules in one browser process:
 
-## Example
+- Webchan 1.0.5 median: `81.7 ms`
+- Webchan 1.0.6 median: `80.8 ms`
+- 1.0.6 / 1.0.5: `0.989x`
+- output mismatch: `0`
+- SIMD instructions in both A/B modules: `0`
 
-```text
-array input f64 1024
-array output f64 1024
-
-kernel scale effect bounded 1024
-for i from 0 to 1024 step 1
-    local f64 x = input[i]
-    set output[i] = x * 2.0
-endfor
-endkernel
-```
-
-The compiler proves loop domains and indexed accesses before lowering. Unsupported unbounded strict-path work, recursive call cycles, invalid dependency cycles, and unproved out-of-range accesses are rejected rather than guessed through.
-
-## Documentation
-
-The release archive contains the compiler source, runtime, examples, host probes, generated outputs, tests, validation reports, and reference documentation. Useful starting points are:
-
-```text
-docs/LANGUAGE_SPEC.md
-docs/WEBCHAN_CONTRACT.md
-docs/WEBCHAN_MANIFESTO.md
-docs/OPTIMIZATION_PROVENANCE.md
-docs/STRUCTURAL_ITERATION_ALGEBRA.md
-docs/STRUCTURAL_DATA_LAYOUT_ALGEBRA.md
-docs/STRUCTURAL_LINEAR_ALGEBRA.md
-docs/STRUCTURAL_TOPOLOGY.md
-docs/INVERSE_PARALLEL_EXPANSION.md
-docs/EXTERNAL_CAPABILITY_INTERFACE.md
-```
+This probe supports "no measured fast-path regression" for that workload; it is not a universal performance claim.
 
 ## Boundaries
 
-Webchan 1.0.4 is a compiler prototype, not an ecosystem-complete replacement for C, Rust, JavaScript, or mature production toolchains. Current boundaries include unrestricted pointer alias mutation, arbitrary unbounded loops, recursive call cycles, a mature general heap/ownership system, a full package ecosystem, and complete arbitrary higher-topology reasoning.
-
-A missing proof does not authorize a guess. The compiler keeps an exact fallback where one exists or rejects the operation when the required property cannot be established.
-
-Published archives are kept in [`dist/`](dist/) for reproducibility.
+Webchan 1.0.6 remains experimental software rather than an ecosystem-complete replacement for C, Rust, JavaScript, or mature production web toolchains. A missing proof does not authorize a guess. The compiler keeps an exact fallback where one exists or rejects the stronger transformation when the required property cannot be established.
