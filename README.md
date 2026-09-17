@@ -11,6 +11,32 @@ Webchan is an experimental proof-directed systems and numerical language for fin
 
 The 1.0.5 Minimal Web Surface remains unchanged: ordinary source can stay short, while resolved contracts and proof information remain explicit in generated IR.
 
+## Name
+
+The name **WebChan** combines **Web** with the Japanese suffix **-chan (ちゃん)**, a familiar and affectionate form of address.
+
+In other words: **Web + chan = WebChan**.
+
+It is a small, friendly name for a language built around keeping heavy web workloads responsive.
+
+## Why WebChan Exists
+
+WebChan started from a practical problem.
+
+I rely heavily on ChatGPT for long programming and development sessions. As the projects became larger, the browser itself increasingly became the weak point: long conversations slowed down, heavy pages became unresponsive, and unfinished tasks could be lost simply because the interface could no longer keep up with the workload.
+
+That is a bad failure mode for a development tool. The program may still be correct, the computation may still be possible, and the machine may still have resources available, but if the page becomes blocked, the work effectively stops.
+
+WebChan was created around a simple question:
+
+> How far can a single-threaded runtime be pushed before overload turns into blocking?
+
+Instead of treating additional threads as the default solution, WebChan focuses on making one execution stream remain usable under sustained load. Its design emphasizes bounded work, explicit priority, resumable execution, backpressure, reuse of completed state, and avoiding work that does not need to be performed immediately.
+
+The goal is not merely to make single-threaded code fast. The goal is to make it difficult to stall.
+
+WebChan began because my own development workflow kept running into this problem. The broader reason for building it is simple: promising work should not be cut short because the page carrying it froze first.
+
 ## Download
 
 - [Webchan 1.0.6 archive](dist/webchan-1.0.6-091020261435.zip)
